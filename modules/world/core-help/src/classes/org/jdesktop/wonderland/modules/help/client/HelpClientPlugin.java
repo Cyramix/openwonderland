@@ -74,8 +74,8 @@ public class HelpClientPlugin extends BaseClientPlugin {
         {"User_Guide", "http://openwonderland.org/index.php?option=com_content&view=article&id=95&Itemid=94"},
         {"Blog", "http://blogs.openwonderland.org/"},
         {"Forum", "http://groups.google.com/group/openwonderland"},
-        {"Tutorials", "http://code.google.com/p/openwonderland/wiki/OpenWonderland"},
-        {"Report_Bug", "http://code.google.com/p/openwonderland/issues/list"},
+        {"Tutorials", "http://sourceforge.net/p/openwonderland/wiki/OpenWonderland"},
+        {"Report_Bug", "http://sourceforge.net/p/openwonderland/issues/list"},
         {"About", "http://www.openwonderland.org"}
     };
 
