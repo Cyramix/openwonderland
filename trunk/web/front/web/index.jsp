@@ -50,7 +50,7 @@
 
             <li><a href="http://openwonderland.org">Open Wonderland Web Site</a></li>
 
-            <li><a href="http://code.google.com/p/openwonderland/wiki/OpenWonderland?tm=6">Documentation Wiki</a></li>
+            <li><a href="http://sourceforge.net/p/openwonderland/wiki/OpenWonderland?tm=6">Documentation Wiki</a></li>
 
             <li><a href="http://groups.google.com/group/openwonderland">Help Forum</a></li>
           </ul>
@@ -68,7 +68,7 @@
           <ul>
             <li><a href="http://faithhold.dyndns.org:8080/JSPWiki/Wiki.jsp?page=Server%20Administration%20Console%20Guide">Server Administration Console Guide</a></li>
 
-            <li><a href="http://code.google.com/p/openwonderland/wiki/WebStart05">Launching Wonderland Clients using Java Web Start</a></li>
+            <li><a href="http://sourceforge.net/p/openwonderland/wiki/WebStart05">Launching Wonderland Clients using Java Web Start</a></li>
 
             <li><a href="http://wiki.java.net/bin/view/Javadesktop/ProjectWonderlandConfigureFirewall05">Configuring Open Wonderland for Firewalls, NATs, and Proxies</a></li>
           </ul>
