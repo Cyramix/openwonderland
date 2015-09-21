@@ -1,3 +1,4 @@
+Moved to SourceForge from Google code
 
 To resolve OutOfMemoryError: PermGen space set the following ant options on OSX and Linux
 
