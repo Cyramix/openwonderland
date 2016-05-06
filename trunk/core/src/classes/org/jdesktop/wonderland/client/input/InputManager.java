@@ -1,4 +1,7 @@
 /**
+ * Copyright (c) 2016, Envisiture Consulting, LLC, All Rights Reserved
+ */
+/**
  * Open Wonderland
  *
  * Copyright (c) 2010 - 2011, Open Wonderland Foundation, All Rights Reserved
@@ -43,32 +46,35 @@ import java.awt.dnd.DropTargetDragEvent;
 import java.awt.dnd.DropTargetDropEvent;
 import java.awt.dnd.DropTargetEvent;
 import java.awt.dnd.DropTargetListener;
-import java.awt.event.KeyEvent;
 import java.awt.event.FocusEvent;
+import java.awt.event.FocusListener;
+import java.awt.event.KeyEvent;
+import java.awt.event.KeyListener;
+import java.awt.event.MouseEvent;
 import java.awt.event.MouseListener;
 import java.awt.event.MouseMotionListener;
-import java.awt.event.MouseWheelListener;
-import java.awt.event.KeyListener;
-import java.awt.event.FocusListener;
-import java.awt.event.MouseEvent;
 import java.awt.event.MouseWheelEvent;
+import java.awt.event.MouseWheelListener;
 import java.util.EventObject;
-import org.jdesktop.mtgame.CameraComponent;
-import org.jdesktop.wonderland.common.ExperimentalAPI;
-import org.jdesktop.wonderland.common.InternalAPI;
+import java.util.HashSet;
+import java.util.logging.Level;
 import java.util.logging.Logger;
+import javax.swing.SwingUtilities;
+import org.jdesktop.mtgame.CameraComponent;
 import org.jdesktop.mtgame.Entity;
 import org.jdesktop.mtgame.EntityComponent;
 import org.jdesktop.mtgame.PickDetails;
-import org.jdesktop.mtgame.WorldManager;
 import org.jdesktop.mtgame.PickInfo;
+import org.jdesktop.mtgame.WorldManager;
 import org.jdesktop.wonderland.client.jme.ClientContextJME;
+import org.jdesktop.wonderland.client.jme.JmeClientMain;
+import org.jdesktop.wonderland.client.jme.MainFrameImpl;
+import org.jdesktop.wonderland.client.jme.input.FocusEvent3D;
+import org.jdesktop.wonderland.client.jme.input.InputPicker3D;
 import org.jdesktop.wonderland.client.jme.input.KeyEvent3D;
 import org.jdesktop.wonderland.client.jme.input.MouseEvent3D;
-import org.jdesktop.wonderland.client.jme.JmeClientMain;
-import javax.swing.SwingUtilities;
-import org.jdesktop.wonderland.client.jme.input.InputPicker3D;
-import org.jdesktop.wonderland.client.jme.input.FocusEvent3D;
+import org.jdesktop.wonderland.common.ExperimentalAPI;
+import org.jdesktop.wonderland.common.InternalAPI;
 
 /**
  * A singleton container for all of the processor objects in the Wonderland input subsystem.
@@ -115,6 +121,7 @@ import org.jdesktop.wonderland.client.jme.input.FocusEvent3D;
  * The goal is to allow multiple and different focus managers to be experimented with over time.
  *
  * @author deronj
+ * @author Abhishek Upadhyay <abhiit61@gmail.com>
  */
 
 // TODO: low: InputPicker doesn't deal with multiple cameras properly.
@@ -143,6 +150,16 @@ public abstract class InputManager
 
     /** The global focus wildcard entity */
     protected Entity globalFocusEntity;
+
+    /** just to check if the user has used scroll button */
+    public static boolean scrolled = false;
+    
+    /** list of pressed keys,for keys which pressed multiple time we should not add it multiple times */
+    /** do we need to synchronize this? */
+    private static final HashSet<Integer> keyPressedSet = new HashSet<Integer>();
+    
+    /** make keyPressed zero when we lost focus on window */
+    private static MainFrameFocusListener focusListener = null;
 
     /** The ways that a focus set can be changed. */
     public enum FocusChangeAction { 
@@ -207,6 +224,7 @@ public abstract class InputManager
      * Return the input manager singleton.
      * <br>
      * INTERNAL ONLY.
+     * @return 
      */
     @InternalAPI
     static public InputManager inputManager () {
@@ -229,6 +247,13 @@ public abstract class InputManager
      */
     public void initialize (Canvas canvas) {
 	initialize(canvas, null);
+    }
+    
+    public static void setScroll(boolean  scroll){
+        scrolled = scroll;
+    }
+    public static boolean getScroll(){
+        return scrolled;
     }
 
     /** 
@@ -256,6 +281,10 @@ public abstract class InputManager
 	canvas.addFocusListener(this);
         canvas.setDropTarget(new DropTarget(canvas, this));
 
+        // add focus listener
+        focusListener = new MainFrameFocusListener();
+        JmeClientMain.getFrame().getCanvas().addFocusListener(focusListener);
+        
 	logger.fine("Input System initialization complete.");
     }
 
@@ -362,6 +391,10 @@ public abstract class InputManager
      */
     @InternalAPI
     public void mouseWheelMoved(MouseWheelEvent e) {
+        scrolled = true;
+        
+        //Notify if scroll so that it can enter in zoom mode and untick all radiomenuitem
+        MainFrameImpl.isScroll();
 	inputPicker.pickMouseEvent3D(e);
     }
     
@@ -372,6 +405,13 @@ public abstract class InputManager
     @InternalAPI
     public void keyPressed(KeyEvent e) {
 	inputPicker.pickKeyEvent(e);
+        if(e.getKeyCode() != KeyEvent.VK_UP &&
+                e.getKeyCode() != KeyEvent.VK_DOWN &&
+                e.getKeyCode() != KeyEvent.VK_LEFT &&
+                e.getKeyCode() != KeyEvent.VK_RIGHT) {
+            keyPressedSet.add(e.getKeyCode());
+            logger.log(Level.INFO, "keyPressed++ : {0} | {1}", new Object[]{keyPressedSet.size(), e.getKeyCode()});
+        }
     }
 
     /**
@@ -381,6 +421,13 @@ public abstract class InputManager
     @InternalAPI
     public void keyReleased(KeyEvent e) {
 	inputPicker.pickKeyEvent(e);
+        if(e.getKeyCode() != KeyEvent.VK_UP &&
+                e.getKeyCode() != KeyEvent.VK_DOWN &&
+                e.getKeyCode() != KeyEvent.VK_LEFT &&
+                e.getKeyCode() != KeyEvent.VK_RIGHT) {
+            keyPressedSet.remove(e.getKeyCode());
+            logger.log(Level.INFO, "keyPressed-- : {0} | {1}", new Object[]{keyPressedSet.size(), e.getKeyCode()});
+        }
     }
 
     /**
@@ -767,5 +814,24 @@ public abstract class InputManager
 	    return null;
 	}
 	return inputPicker.pickEventScreenPos(x, y);
+    }
+    
+    public static boolean isAnyKeyPressed() {
+        return !keyPressedSet.isEmpty();
+    }
+    
+    /**
+     * If the main frame lost focus,
+     * Remove if any key is pressed.
+     */
+    private class MainFrameFocusListener implements FocusListener {
+
+        public void focusGained(FocusEvent e) {
+            keyPressedSet.clear();
+        }
+
+        public void focusLost(FocusEvent e) {
+        }
+        
     }
 }

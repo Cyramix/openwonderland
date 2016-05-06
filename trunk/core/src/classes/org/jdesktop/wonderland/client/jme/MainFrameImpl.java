@@ -1,4 +1,7 @@
 /**
+ * Copyright (c) 2016, Envisiture Consulting, LLC, All Rights Reserved
+ */
+/**
  * Open Wonderland
  *
  * Copyright (c) 2010 - 2011, Open Wonderland Foundation, All Rights Reserved
@@ -43,6 +46,8 @@ import java.awt.GraphicsEnvironment;
 import java.awt.Rectangle;
 import java.awt.event.ActionEvent;
 import java.awt.event.ActionListener;
+import java.awt.event.ItemEvent;
+import java.awt.event.ItemListener;
 import java.awt.event.KeyEvent;
 import java.io.Serializable;
 import java.util.ArrayList;
@@ -57,7 +62,6 @@ import javax.swing.event.DocumentEvent;
 import javax.swing.event.DocumentListener;
 import org.jdesktop.mtgame.WorldManager;
 import java.util.logging.Logger;
-import java.util.prefs.Preferences;
 import javax.swing.AbstractAction;
 import javax.swing.ActionMap;
 import javax.swing.ButtonGroup;
@@ -84,6 +88,7 @@ import org.jdesktop.wonderland.client.jme.utils.GUIUtils;
  * 
  * @author  paulby
  * @author Ronny Standtke <ronny.standtke@fhnw.ch>
+ * @author Abhishek Upadhyay <abhiit61@gmail.com>
  */
 public class MainFrameImpl extends JFrame implements MainFrame {
 
@@ -94,9 +99,11 @@ public class MainFrameImpl extends JFrame implements MainFrame {
     private JMenuItem logoutMI;
     private JMenuItem exitMI;
     private CameraButtonGroup cameraButtonGroup = new CameraButtonGroup();
-    private JRadioButtonMenuItem firstPersonRB;
-    private JRadioButtonMenuItem thirdPersonRB;
-    private JRadioButtonMenuItem frontPersonRB;
+    private static JRadioButtonMenuItem firstPersonRB;
+    private static JRadioButtonMenuItem thirdPersonRB;
+    private static JRadioButtonMenuItem frontPersonRB;
+    private static JRadioButtonMenuItem zoomRB;
+    private static JRadioButtonMenuItem bestViewRB;
     private final Map<JMenuItem, Integer> menuWeights =
             new HashMap<JMenuItem, Integer>();
     
@@ -186,6 +193,26 @@ public class MainFrameImpl extends JFrame implements MainFrame {
         });
     }
 
+    public static JRadioButtonMenuItem getBestViewRB() {
+        return bestViewRB;
+    }
+
+    public static JRadioButtonMenuItem getFirstPersonRB() {
+        return firstPersonRB;
+    }
+
+    public static JRadioButtonMenuItem getThirdPersonRB() {
+        return thirdPersonRB;
+    }
+
+    public static JRadioButtonMenuItem getZoomRB() {
+        return zoomRB;
+    }
+
+    public static JRadioButtonMenuItem getFrontPersonRB() {
+        return frontPersonRB;
+    }
+    
     private void initMenus() {
         SwingUtilities.invokeLater(new Runnable() {
 
@@ -228,25 +255,48 @@ public class MainFrameImpl extends JFrame implements MainFrame {
                 firstPersonRB.addActionListener(new ActionListener() {
 
                     public void actionPerformed(ActionEvent evt) {
+                        bestViewRB.setVisible(false);
                         cameraChangedActionPerformed(evt);
                     }
                 });
                 addToViewMenu(firstPersonRB, 0);
                 cameraButtonGroup.add(firstPersonRB);
 
+                bestViewRB = new JRadioButtonMenuItem("Best View");
+                addToViewMenu(bestViewRB, 4);
+                cameraButtonGroup.add(bestViewRB);
+                bestViewRB.setVisible(false);
+
                 thirdPersonRB = new JRadioButtonMenuItem(
                         BUNDLE.getString("Third Person Camera"));
-
                 thirdPersonRB.setAccelerator(KeyStroke.getKeyStroke('t'));
-                
+                thirdPersonRB.addItemListener(new ItemListener() {
+
+                    public void itemStateChanged(ItemEvent e) {
+                        if (thirdPersonRB.isSelected()) {
+                            bestViewRB.setVisible(false);
+                        }
+                    }
+                });
                 thirdPersonRB.addActionListener(new ActionListener() {
 
                     public void actionPerformed(ActionEvent evt) {
+                        bestViewRB.setVisible(false);
                         cameraChangedActionPerformed(evt);
                     }
                 });
                 addToViewMenu(thirdPersonRB, 1);
                 cameraButtonGroup.add(thirdPersonRB);
+
+                //Adding fack JRadioButtonMenuItem for zooming untick System
+                zoomRB = new JRadioButtonMenuItem("Zoom Camera");
+                zoomRB.setVisible(false);
+                zoomRB.addActionListener(new ActionListener() {
+                    public void actionPerformed(ActionEvent evt) {
+                    }
+                });
+                addToViewMenu(zoomRB, 9);
+                cameraButtonGroup.add(zoomRB);
 
                 frontPersonRB = new JRadioButtonMenuItem(
                         BUNDLE.getString("Front Camera"));
@@ -255,6 +305,7 @@ public class MainFrameImpl extends JFrame implements MainFrame {
                 frontPersonRB.addActionListener(new ActionListener() {
 
                     public void actionPerformed(ActionEvent evt) {
+                        bestViewRB.setVisible(false);
                         cameraChangedActionPerformed(evt);
                     }
                 });
@@ -277,6 +328,9 @@ public class MainFrameImpl extends JFrame implements MainFrame {
                     public void actionPerformed(ActionEvent e) {
                         ViewManager.getViewManager().setCameraController(
                                 ViewManager.getDefaultCamera());
+                        //On Esc key press it will select thirdPersonRB
+                        LOGGER.info("ESC Key pressed");
+                        thirdPersonRB.setSelected(true);
                     }
                 });
 
@@ -359,6 +413,11 @@ public class MainFrameImpl extends JFrame implements MainFrame {
                 addToHelpMenu(logViewerMI, -1);
             }
         });
+    }
+    
+    public static void isScroll() {
+        bestViewRB.setVisible(false);
+        zoomRB.setSelected(true);
     }
 
     private void logoutMIActionPerformed(ActionEvent evt) {
