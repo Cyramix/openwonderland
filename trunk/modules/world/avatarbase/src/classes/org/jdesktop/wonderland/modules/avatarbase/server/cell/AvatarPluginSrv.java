@@ -17,8 +17,11 @@
  */
 package org.jdesktop.wonderland.modules.avatarbase.server.cell;
 
+import org.jdesktop.wonderland.modules.avatarbase.server.GestureClientConnectionHandler;
 import org.jdesktop.wonderland.server.ServerPlugin;
+import org.jdesktop.wonderland.server.WonderlandContext;
 import org.jdesktop.wonderland.server.cell.CellManagerMO;
+import org.jdesktop.wonderland.server.comms.CommsManager;
 
 /**
  *
@@ -27,6 +30,10 @@ import org.jdesktop.wonderland.server.cell.CellManagerMO;
 public class AvatarPluginSrv implements ServerPlugin {
 
     public void initialize() {
+        // Register a handler for gesture connections
+        CommsManager cm = WonderlandContext.getCommsManager();
+        cm.registerClientHandler(new GestureClientConnectionHandler());
+        
         CellManagerMO.getCellManager().registerAvatarCellComponent(AvatarConfigComponentMO.class);
         CellManagerMO.getCellManager().registerAvatarCellComponent(NameTagComponentMO.class);
     }

@@ -13,7 +13,7 @@ public class NameTagMessage extends CellMessage {
     
     private boolean isMute;
     private String username;
-
+    
     public boolean isIsMute() {
         return isMute;
     }
@@ -29,5 +29,4 @@ public class NameTagMessage extends CellMessage {
     public void setUsername(String username) {
         this.username = username;
     }
-    
 }

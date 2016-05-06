@@ -1,4 +1,7 @@
 /**
+ * Copyright (c) 2016, Envisiture Consulting, LLC, All Rights Reserved
+ */
+/**
  * Project Wonderland
  *
  * Copyright (c) 2004-2009, Sun Microsystems, Inc., All Rights Reserved
@@ -17,9 +20,12 @@
  */
 package org.jdesktop.wonderland.modules.avatarbase.client.imi;
 
+import imi.character.avatar.AvatarContext;
+import imi.character.statemachine.corestates.SitState;
 import java.awt.Color;
 import java.awt.Cursor;
 import java.awt.EventQueue;
+import java.awt.TrayIcon;
 import java.awt.event.ActionEvent;
 import java.awt.event.ActionListener;
 import java.awt.event.WindowAdapter;
@@ -35,8 +41,10 @@ import javax.swing.JColorChooser;
 import javax.swing.JComboBox;
 import javax.swing.JOptionPane;
 import javax.swing.SwingUtilities;
+import org.jdesktop.wonderland.client.cell.Cell;
 import org.jdesktop.wonderland.client.cell.view.ViewCell;
 import org.jdesktop.wonderland.client.jme.ClientContextJME;
+import org.jdesktop.wonderland.client.jme.ViewManager;
 import org.jdesktop.wonderland.modules.avatarbase.client.jme.cellrenderer.AvatarImiJME;
 import org.jdesktop.wonderland.modules.avatarbase.client.jme.cellrenderer.LoadingInfo;
 import org.jdesktop.wonderland.modules.avatarbase.client.jme.cellrenderer.WlAvatarCharacter;
@@ -52,10 +60,11 @@ import org.jdesktop.wonderland.modules.avatarbase.client.registry.spi.AvatarSPI;
 /**
  * A JFrame to configure the standard attributes of an avatar. There is a single
  * instance of this class that should be used on the system.
- * 
+ *
  * @author jkaplan
  * @author Jordan Slott <jslott@dev.java.net>
  * @author Ronny Standtke <ronny.standtke@fhnw.ch>
+ * @author Abhishek Upadhyay <abhiit61@gmail.com>
  */
 public class ImiAvatarDetailsJDialog extends javax.swing.JDialog {
 
@@ -167,7 +176,7 @@ public class ImiAvatarDetailsJDialog extends javax.swing.JDialog {
 
         // For now, do not display the Skin Color button...
         skinButton.setVisible(false);
-        
+
         // Listen for the Skin Color.. button click to configure the its color
         skinButton.addActionListener(new ActionListener() {
             public void actionPerformed(ActionEvent e) {
@@ -237,7 +246,11 @@ public class ImiAvatarDetailsJDialog extends javax.swing.JDialog {
             public void actionPerformed(ActionEvent e) {
                 // Revert to the avatar currently set and close the window
                 AvatarRegistry registry = AvatarRegistry.getAvatarRegistry();
-                registry.setAvatarInUse(registry.getAvatarInUse(), true);
+                //The isLocal is set to false to handle the sync issue on other clients.
+                registry.setAvatarInUse(registry.getAvatarInUse(), false);
+                //for sync of the avatar on other client after configuring the avatar
+                AvatarImiJME.getPrimaryAvatarRenderer().getAvatarCharacter().getContext().triggerPressed(AvatarContext.TriggerNames.Idle.ordinal());
+                AvatarImiJME.getPrimaryAvatarRenderer().getAvatarCharacter().getContext().triggerReleased(AvatarContext.TriggerNames.Idle.ordinal());
                 setVisible(false);
             }
         });
@@ -343,7 +356,7 @@ public class ImiAvatarDetailsJDialog extends javax.swing.JDialog {
      * Sets the current attributes of the avatar and refreshes the GUI.
      *
      * NOTE: This method assumes it is being called in the AWT Event Thread.
-     * 
+     *
      * @param attributes The attribute of the avatar configuration
      */
     public void setAttributes(WonderlandCharacterParams attributes) {
@@ -542,6 +555,9 @@ public class ImiAvatarDetailsJDialog extends javax.swing.JDialog {
      * Attempt to use the current avatar. Close the window if so.
      */
     private void use() {
+        if (isAvatarSitting()) {
+            return;
+        }
         final AvatarRegistry registry = AvatarRegistry.getAvatarRegistry();
 
         // Make sure the name text field is not empty.
@@ -628,6 +644,29 @@ public class ImiAvatarDetailsJDialog extends javax.swing.JDialog {
             }
         }.start();
     }
+/**
+ * checks whether avatar is in sit state.
+ * @return true if the avatar is in Sit State.
+ */
+    private boolean isAvatarSitting() {
+        boolean isSitting = false;
+        try {
+            if (((AvatarImiJME) ViewManager.getViewManager().getPrimaryViewCell().getCellRenderer(Cell.RendererType.RENDERER_JME)) != null
+                    && (((AvatarImiJME) ViewManager.getViewManager().getPrimaryViewCell().getCellRenderer(Cell.RendererType.RENDERER_JME)).getAvatarCharacter().getContext().getCurrentState() instanceof SitState)) {
+                isSitting = true;
+                final String message = "Avatar should be in standing position to configure.";
+                SwingUtilities.invokeLater(new Runnable() {
+                    public void run() {
+                        JOptionPane.showMessageDialog(null, message, "Warning for Configuring Avatar", TrayIcon.MessageType.INFO.ordinal());
+                    }
+                });
+            }
+        } catch (Exception e) {
+            e.printStackTrace();
+        } finally {
+            return isSitting;
+        }
+    }
 
     /**
      * Saves the current avatar to the system.
@@ -701,7 +740,7 @@ public class ImiAvatarDetailsJDialog extends javax.swing.JDialog {
         else {
             setCursor(normalCursor);
         }
-        
+
         useButton.setEnabled(!isBusy);
         cancelButton.setEnabled(!isBusy);
         nameLabel.setEnabled(!isBusy);
@@ -737,7 +776,7 @@ public class ImiAvatarDetailsJDialog extends javax.swing.JDialog {
      * always regenerated by the Form Editor.
      */
     @SuppressWarnings("unchecked")
-    
+
     // <editor-fold defaultstate="collapsed" desc="Generated Code">//GEN-BEGIN:initComponents
     private void initComponents() {
         java.awt.GridBagConstraints gridBagConstraints;
@@ -958,16 +997,16 @@ public class ImiAvatarDetailsJDialog extends javax.swing.JDialog {
         getContentPane().setLayout(layout);
         layout.setHorizontalGroup(
             layout.createParallelGroup(org.jdesktop.layout.GroupLayout.LEADING)
-            .add(namePanel, org.jdesktop.layout.GroupLayout.DEFAULT_SIZE, 325, Short.MAX_VALUE)
-            .add(genderPanel, org.jdesktop.layout.GroupLayout.DEFAULT_SIZE, 325, Short.MAX_VALUE)
-            .add(mainConfigPanel, org.jdesktop.layout.GroupLayout.DEFAULT_SIZE, 325, Short.MAX_VALUE)
+            .add(namePanel, org.jdesktop.layout.GroupLayout.DEFAULT_SIZE, 349, Short.MAX_VALUE)
+            .add(genderPanel, org.jdesktop.layout.GroupLayout.DEFAULT_SIZE, 349, Short.MAX_VALUE)
+            .add(mainConfigPanel, org.jdesktop.layout.GroupLayout.DEFAULT_SIZE, 349, Short.MAX_VALUE)
             .add(layout.createSequentialGroup()
                 .addContainerGap()
-                .add(randomizeButton)
-                .addContainerGap(230, Short.MAX_VALUE))
-            .add(org.jdesktop.layout.GroupLayout.TRAILING, layout.createSequentialGroup()
-                .addContainerGap()
-                .add(buttonPanel, org.jdesktop.layout.GroupLayout.DEFAULT_SIZE, 301, Short.MAX_VALUE)
+                .add(layout.createParallelGroup(org.jdesktop.layout.GroupLayout.LEADING)
+                    .add(layout.createSequentialGroup()
+                        .add(randomizeButton)
+                        .add(0, 220, Short.MAX_VALUE))
+                    .add(org.jdesktop.layout.GroupLayout.TRAILING, buttonPanel, org.jdesktop.layout.GroupLayout.DEFAULT_SIZE, 337, Short.MAX_VALUE))
                 .addContainerGap())
         );
         layout.setVerticalGroup(
