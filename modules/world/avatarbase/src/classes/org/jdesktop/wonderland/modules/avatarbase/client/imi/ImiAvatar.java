@@ -1,4 +1,7 @@
 /**
+ * Copyright (c) 2016, Envisiture Consulting, LLC, All Rights Reserved
+ */
+/**
  * Project Wonderland
  *
  * Copyright (c) 2004-2009, Sun Microsystems, Inc., All Rights Reserved
@@ -44,6 +47,7 @@ import org.jdesktop.wonderland.modules.contentrepo.common.ContentResource;
  * and the name of the avatar.
  *
  * @author Jordan Slott <jslott@dev.java.net>
+ * @author Abhishek Upadhyay <abhiit61@gmail.com>
  */
 public class ImiAvatar implements AvatarSPI {
 
@@ -225,6 +229,8 @@ public class ImiAvatar implements AvatarSPI {
         // Fetch the configuration dialog. There is only a single instance of
         // it. Spawn the call to setAvatar() in a new thread, since it may
         // take a while.
+        // make the dialog visible after avatar is set
+        // as it is opening behind other windows
         final ImiAvatarDetailsJDialog dialog =
                 ImiAvatarDetailsJDialog.getImiAvatarDetailsJDialog();
         dialog.setVisible(true);
@@ -232,6 +238,7 @@ public class ImiAvatar implements AvatarSPI {
             @Override
             public void run() {
                 dialog.setAvatar(ImiAvatar.this);
+                dialog.setVisible(true);
             }
         }.start();
     }

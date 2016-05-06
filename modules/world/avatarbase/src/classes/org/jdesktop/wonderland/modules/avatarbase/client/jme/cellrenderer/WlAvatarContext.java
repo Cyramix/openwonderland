@@ -1,4 +1,7 @@
 /**
+ * Copyright (c) 2016, Envisiture Consulting, LLC, All Rights Reserved
+ */
+/**
  * Open Wonderland
  *
  * Copyright (c) 2010 - 2011, Open Wonderland Foundation, All Rights Reserved
@@ -41,8 +44,8 @@ import imi.character.statemachine.GameState;
 import imi.character.statemachine.corestates.ActionInfo;
 import imi.character.statemachine.corestates.ActionState;
 import imi.character.statemachine.corestates.CycleActionState;
-import imi.character.statemachine.corestates.FlyState;
 import imi.character.statemachine.corestates.IdleState;
+import imi.character.statemachine.corestates.SitState;
 import imi.character.statemachine.corestates.TurnState;
 import imi.character.statemachine.corestates.WalkState;
 import imi.scene.animation.AnimationListener.AnimationMessageType;
@@ -55,6 +58,7 @@ import org.jdesktop.wonderland.client.ClientContext;
  * Overload AvatarContext to add playMiscAnimation
  *
  * @author paulby
+ * @author Abhishek Upadhyay <abhiit61@gmail.com>
  */
 public class WlAvatarContext extends imi.character.avatar.AvatarContext {
     private static final Logger LOGGER =
@@ -70,36 +74,13 @@ public class WlAvatarContext extends imi.character.avatar.AvatarContext {
         if (avatar.getCharacterParams().isAnimateBody())
             for(ActionInfo actionInfo : getGenericAnimations()) {
                 actionMap.put(actionInfo.getAnimationName(), actionInfo);
-            }
+        }
     }
 
     @Override
     protected CharacterController instantiateController() {
         return new WlAvatarController(getavatar());
     }
-    
-    
-/*
-    @Override
-    public void notifyAnimationMessage(AnimationMessageType message, int stateID)
-        {
-        // DO SOMETHING WITH MESSAGE IF stateID is 0
-        System.out.println("XXX message: " + message + " StateID: " + stateID);
-
-        // switch (message)
-            {
-        //    case EndOfCycle:
-        //        break;
-        //    case PlayOnceComplete:
-        //        break;
-        //    case TransitionComplete:
-        //        break;
-        //
-            }
-
-        super.notifyAnimationMessage(message, stateID);
-        }
-*/
 
     /**
      * Return the names of the animations available to this character
@@ -117,8 +98,12 @@ public class WlAvatarContext extends imi.character.avatar.AvatarContext {
             // state machine may not actually change state. Therefore in triggerAlert
             // we check for the trigger and force the state change.
             //triggerReleased(TriggerNames.MiscAction.ordinal());
-            triggerPressed(TriggerNames.MiscAction.ordinal());
-            triggerReleased(TriggerNames.MiscAction.ordinal());
+            //release trigger in stateEnter method now
+            if (currentState instanceof SitState) {
+                triggerPressed(TriggerNames.MiscActionInSitting.ordinal());
+            } else {
+                triggerPressed(TriggerNames.MiscAction.ordinal());
+            }
         }
     }
 
@@ -130,8 +115,8 @@ public class WlAvatarContext extends imi.character.avatar.AvatarContext {
     }
 
     @Override
-    public void notifyAnimationMessage(AnimationMessageType message, int stateID) {
-        super.notifyAnimationMessage(message, stateID);
+    public void notifyAnimationMessage(AnimationMessageType message, int stateID, String msgString) {
+        super.notifyAnimationMessage(message, stateID, "");
 
         GameState cur = getCurrentState();
 
@@ -144,11 +129,11 @@ public class WlAvatarContext extends imi.character.avatar.AvatarContext {
             type = AvatarAnimationEvent.EventType.STOPPED;
             animationName = currentAnimationName;
             currentAnimationName = null;
-            } 
-	else if (cur instanceof CycleActionState) 
-	    {
+        } 
+        else if (cur instanceof CycleActionState) 
+        {
             switch (message) 
-		{
+            {
                 case TransitionComplete:
                     type = AvatarAnimationEvent.EventType.STARTED;
                     animationName = cur.getAnimationName();
@@ -159,32 +144,57 @@ public class WlAvatarContext extends imi.character.avatar.AvatarContext {
                     animationName = cur.getAnimationName();
                     currentAnimationName = null;
                     break;
-                }
+                case EndOfCycle:
+                    type = AvatarAnimationEvent.EventType.STOPPED;
+                    animationName = cur.getAnimationName();
+                    currentAnimationName = null;
+                    break;
+                case EndOfCycleWithoutExitAnim:
+                    type = AvatarAnimationEvent.EventType.STOPPED;
+                    animationName = cur.getAnimationName();
+                    currentAnimationName = null;
+                    break;
+                case Restart:
+                    type = AvatarAnimationEvent.EventType.STARTED;
+                    animationName = cur.getAnimationName();
+                    currentAnimationName = animationName;
+                    break;
+                case RestartAndSave:
+                    type = AvatarAnimationEvent.EventType.STARTED;
+                    animationName = cur.getAnimationName();
+                    currentAnimationName = animationName;
+                    break;
+                case ExitAnimation:
+                    type = AvatarAnimationEvent.EventType.STOPPED;
+                    animationName = cur.getAnimationName();
+                    currentAnimationName = null;
+                    break;
+            }
             }
 	else if (cur instanceof TurnState)
 	    {
-	    type = AvatarAnimationEvent.EventType.STARTED;
-	    currentAnimationName = "Turn";
-	    animationName = currentAnimationName;
+            type = AvatarAnimationEvent.EventType.STARTED;
+            currentAnimationName = "Turn";
+            animationName = currentAnimationName;
 	    }
 	else if (cur instanceof WalkState)
 	    {
-	    type = AvatarAnimationEvent.EventType.STARTED;
-	    currentAnimationName = "Walk";
-	    animationName = currentAnimationName;
+            type = AvatarAnimationEvent.EventType.STARTED;
+            currentAnimationName = "Walk";
+            animationName = currentAnimationName;
 	    }
 	else if (cur instanceof IdleState)
 	    {
             type = AvatarAnimationEvent.EventType.STOPPED;
-	    }
+        }
 
         if (type == null) 
-	    {
+	{
             return;
-            }
+        }
 
         AvatarAnimationEvent aee = new AvatarAnimationEvent(type, getavatar(),
-                                                            animationName);
+                animationName);
         ClientContext.getInputManager().postEvent(aee, getavatar());
     }
 
@@ -193,13 +203,13 @@ public class WlAvatarContext extends imi.character.avatar.AvatarContext {
         if (!pressed) {
             return;
         }
-        
+
         switch (TriggerNames.values()[trigger]) {
 //            case MiscAction:
 //                // Force animation to play if this is a Misc trigger
 //                setCurrentState((ActionState) gameStates.get(CycleActionState.class));
 //                break;
-                
+
             case Idle:
                 // force idle by interrupting the current animation
                 GameState state = getCurrentState();

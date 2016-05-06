@@ -1,4 +1,7 @@
 /**
+ * Copyright (c) 2016, Envisiture Consulting, LLC, All Rights Reserved
+ */
+/**
  * Copyright (c) 2014, WonderBuilders, Inc., All Rights Reserved
  */
 
@@ -21,7 +24,12 @@
  */
 package org.jdesktop.wonderland.modules.avatarbase.client.jme.cellrenderer;
 
+import com.jme.bounding.BoundingSphere;
 import com.jme.scene.Node;
+import imi.character.statemachine.GameState;
+import imi.character.statemachine.GameStateChangeListener;
+import imi.character.statemachine.GameStateChangeListenerRegisterar;
+import imi.character.statemachine.corestates.SitState;
 import org.jdesktop.wonderland.client.cell.Cell;
 import org.jdesktop.wonderland.client.cell.CellComponent;
 import org.jdesktop.wonderland.client.cell.ChannelComponent;
@@ -39,7 +47,7 @@ import org.jdesktop.wonderland.modules.avatarbase.common.cell.messages.NameTagMe
  * will be extended to support other forms of tag
  *
  * @author paulby
- * @author Abhishek Upadhyay
+ * @author Abhishek Upadhyay <abhiit61@gmail.com>
  */
 public class NameTagComponent extends CellComponent {
 
@@ -51,11 +59,12 @@ public class NameTagComponent extends CellComponent {
     private boolean isSpeaking = false;
     private float heightAbove;
     private boolean isMuted;
-    
+
     @UsesCellComponent
     protected ChannelComponent channelComp;
     protected ChannelComponent.ComponentMessageReceiver msgReceiver = null;
-    
+    private GameStateChangeListener gameStateChangeListener = null;
+
     public NameTagComponent(Cell cell) {
         this (cell, 2f);
     }
@@ -75,18 +84,18 @@ public class NameTagComponent extends CellComponent {
         assert(rendererType==Cell.RendererType.RENDERER_JME);
         return nameTagNode;
     }
-    
+
     NameTagNode getNameTagNode() {
         return nameTagNode;
     }
-    
+
     /**
      * Configure the component based on the client state that was
      * passed in.
      */
     @Override
     public void setClientState(CellComponentClientState clientState) {
-        
+
         // allow the superclass to do any configuration necessary
         super.setClientState(clientState);
         isMuted = ((NameTagComponentClientState)clientState).isIsMuted();
@@ -100,10 +109,10 @@ public class NameTagComponent extends CellComponent {
                     synchronized(this) {
                         if (nameTagNode==null) {
                             nameTagNode = new NameTagNode(((ViewCell)cell).getIdentity().getUsername(), 
-                                                            heightAbove,
-                                                            inConeOfSilence,
-                                                            isSpeaking,
-                                                            isMuted);
+                                    heightAbove,
+                                    inConeOfSilence,
+                                    isSpeaking,
+                                    isMuted);
                         }
                     }
                 }
@@ -112,18 +121,21 @@ public class NameTagComponent extends CellComponent {
                 if (!increasing) {
                     synchronized(this) {
                         if (nameTagNode!=null)
-                             nameTagNode.done();
+                            nameTagNode.done();
                         nameTagNode = null;
                         if (msgReceiver != null && channelComp != null) {
                             channelComp.removeMessageReceiver(NameTagMessage.class);
                             msgReceiver = null;
+                        }
+                        if (gameStateChangeListener != null) {
+                            GameStateChangeListenerRegisterar.deRegisterListener(gameStateChangeListener);
                         }
                     }
                 }
                 break;
             case ACTIVE:
                 if(increasing) {
-                     if (msgReceiver == null) {
+                    if (msgReceiver == null) {
                         msgReceiver = new ChannelComponent.ComponentMessageReceiver() {
                             public void messageReceived(CellMessage message) {
                                 //handleConfigMessage((AvatarConfigMessage) message);
@@ -133,14 +145,48 @@ public class NameTagComponent extends CellComponent {
                             }
                         };
                         channelComp.addMessageReceiver(NameTagMessage.class, msgReceiver);
-                     }
+                    }
+                    if (gameStateChangeListener == null) {
+                        gameStateChangeListener = new GameStateChangeListener() {
+
+                            public void enterInState(GameState gs) {
+                            }
+
+                            public void exitfromState(GameState gs) {
+                            }
+
+                            public void changeInState(GameState gs, String string, boolean bln, String string1) {
+                                if (gs.getContext().getCharacter().getCharacterParams().getId()
+                                        .equals(cell.getCellID().toString())) {
+                                    if (gs instanceof SitState) {
+                                        if (string.equals("sitting") && bln && string1.equals("enter")) {
+                                            //avatar sitting done
+                                            gs.getContext().getCharacter()
+                                                    .getJScene().getExternalKidsRoot().attachChild(nameTagNode);
+                                            gs.getContext().getCharacter()
+                                                    .getJScene().getExternalKidsRoot().setModelBound(new BoundingSphere());
+                                            gs.getContext().getCharacter()
+                                                    .getJScene().getExternalKidsRoot().updateModelBound();
+                                            gs.getContext().getCharacter()
+                                                    .getJScene().getExternalKidsRoot().updateGeometricState(0, true);
+                                        } else if (string.equals("liedown") && bln && string1.equals("enter")) {
+                                            //avatar lie down done
+                                            gs.getContext().getCharacter()
+                                                    .getJScene().getExternalKidsRoot().detachChild(nameTagNode);
+                                        }
+                                    }
+                                }
+                            }
+                        };
+                        GameStateChangeListenerRegisterar.registerListener(gameStateChangeListener);
+                    }
                 }
                 break;
         }
     }
 
     public void updateLabel(String usernameAlias, boolean inConeOfSilence, boolean isSpeaking,
-	    boolean isMuted) {
+            boolean isMuted) {
         this.usernameAlias = usernameAlias;
         this.inConeOfSilence = inConeOfSilence;
         this.isSpeaking = isSpeaking;

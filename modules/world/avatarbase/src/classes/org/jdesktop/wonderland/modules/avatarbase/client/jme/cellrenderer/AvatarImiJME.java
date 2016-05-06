@@ -1,4 +1,7 @@
 /**
+ * Copyright (c) 2016, Envisiture Consulting, LLC, All Rights Reserved
+ */
+/**
  * Copyright (c) 2014, WonderBuilders, Inc., All Rights Reserved
  */
 
@@ -55,7 +58,6 @@ import com.jme.scene.Node;
 import com.jme.scene.Spatial;
 import com.jme.scene.Geometry;
 import com.jme.scene.Spatial.CullHint;
-import com.jme.scene.shape.Box;
 import com.jme.scene.shape.Sphere;
 import com.jme.scene.state.RenderState;
 import com.jme.scene.state.ZBufferState;
@@ -65,8 +67,14 @@ import imi.character.CharacterProcessor;
 import imi.character.avatar.Avatar;
 import imi.character.avatar.AvatarController;
 import imi.character.avatar.AvatarCollisionListener;
+import imi.character.avatar.AvatarContext;
+import imi.character.statemachine.GameContext;
 import imi.character.statemachine.GameContextListener;
+import imi.character.statemachine.GameState;
+import imi.character.statemachine.GameStateChangeListener;
+import imi.character.statemachine.GameStateChangeListenerRegisterar;
 import imi.character.statemachine.corestates.CycleActionState;
+import imi.character.statemachine.corestates.IdleState;
 import imi.collision.CollisionController;
 import imi.input.DefaultCharacterControls;
 import imi.scene.PMatrix;
@@ -118,10 +126,10 @@ import org.jdesktop.wonderland.modules.avatarbase.common.cell.messages.NameTagMe
 
 /**
  * Cell renderer for Avatars, using the IMI avatar system.
- * 
+ *
  * @author paulby
  * @author Jordan Slott <jslott@dev.java.net>
- * @author Abhishek Upadhyay
+ * @author Abhishek Upadhyay <abhiit61@gmail.com>
  */
 @ExperimentalAPI
 public class AvatarImiJME extends BasicRenderer implements AvatarActionTrigger {
@@ -147,17 +155,30 @@ public class AvatarImiJME extends BasicRenderer implements AvatarActionTrigger {
 
     private CellMoveListener cellMoveListener = null;
     private CellTransform delayedMove = null;
-    
+
     private Entity rootEntity = null;
 
     private CollisionChangeRequestListener collisionChangeRequestListener;
     private AvatarCollisionListener collisionListener = null;
-    
+
     /** Collection of listeners **/
     private final List<WeakReference<AvatarChangedListener>> avatarChangedListeners = new FastList();
 
     private AvatarUIEventListener avatarUIEventListener;
     private static final Logger LOGGER = Logger.getLogger(AvatarImiJME.class.getName());
+
+    /**
+     * do we need to send movable message for avatar's transform change *
+     */
+    private volatile boolean inSync = true;
+
+    public boolean isInSync() {
+        return inSync;
+    }
+
+    public void setInSync(boolean inSync) {
+        this.inSync = inSync;
+    }
 
     public AvatarImiJME(Cell cell) {
         super(cell);
@@ -169,17 +190,17 @@ public class AvatarImiJME extends BasicRenderer implements AvatarActionTrigger {
         comp.addAvatarConfigChangeListener(new AvatarChangeListener());
 
         // XXX NPC HACK XXX
-        if (cell instanceof AvatarCell)
+        if (cell instanceof AvatarCell) {
             username = ((AvatarCell) cell).getIdentity().getUsername();
-        else
+        } else {
             username = "npc"; // HACK !
-
+        }
         characterMotionListener = new CharacterMotionListener() {
             Vector3f prevTrans;
             PMatrix prevRot;
             float prevHeight;
             boolean prevCollision;
-            
+
             public void transformUpdate(Vector3f translation, PMatrix rotation) {
                 if (logger.isLoggable(Level.FINEST)) {
                     logger.finest("Transform update: translation: prev: " +
@@ -187,24 +208,27 @@ public class AvatarImiJME extends BasicRenderer implements AvatarActionTrigger {
                             " rotation: prev: " + prevRot + " cur: " +
                             rotation);
                 }
-                
+
                 float height = avatarCharacter.getController().getHeight();
                 boolean collision = avatarCharacter.getController().isColliding();
-             
-                if (prevTrans == null || !Math3DUtils.epsilonEquals(prevTrans, translation, 0.001f) ||
-                    prevRot == null || !prevRot.epsilonEquals(rotation, 0.001f) ||
-                    !Math3DUtils.epsilonEquals(prevHeight, height, 0.001f) ||
-                    prevCollision != collision)
-                {                    
-                    MovableAvatarComponent mac = ((MovableAvatarComponent) c.getComponent(MovableComponent.class));
-                    mac.localMoveRequest(new CellTransform(rotation.getRotation(), translation), height, collision);
 
-                    prevTrans = translation.clone();
-                    prevRot = new PMatrix(rotation);
-                    prevHeight = height;
-                    prevCollision = collision;
+                if (prevTrans == null || !Math3DUtils.epsilonEquals(prevTrans, translation, 0.001f)
+                        || prevRot == null || !prevRot.epsilonEquals(rotation, 0.001f)
+                        || !Math3DUtils.epsilonEquals(prevHeight, height, 0.001f)
+                        || prevCollision != collision) {
+                    if (inSync) {
+                        MovableAvatarComponent mac = ((MovableAvatarComponent) c.getComponent(MovableComponent.class));
+                        mac.localMoveRequest(new CellTransform(rotation.getRotation(), translation), height, collision);
+                        prevTrans = translation.clone();
+                        prevRot = new PMatrix(rotation);
+                        prevHeight = height;
+                        prevCollision = collision;
+                    } else {
+                        inSync = true;
+                    }
                 }
-            };   
+            }
+        ;
         };
 
         // This info will be sent to the other clients to animate the avatar
@@ -215,9 +239,9 @@ public class AvatarImiJME extends BasicRenderer implements AvatarActionTrigger {
                     currentTrigger = trigger;
                     currentPressed = pressed;
                 }
-                
+
                 String animationName = null;
-                
+
                 // OWL issue #237 - regardless of the current state, send the
                 // animation that is currently set in CycleActionState. This
                 // is consistent with the behavior of 
@@ -228,28 +252,22 @@ public class AvatarImiJME extends BasicRenderer implements AvatarActionTrigger {
                 if (cas != null) {
                     animationName = cas.getAnimationName();
                 }
-                                
+
                 float height = avatarCharacter.getController().getHeight();
                 boolean collision = avatarCharacter.getController().isColliding();
-                
+
                 if (c.getComponent(MovableComponent.class)==null) {
                     logger.warning("!!!! NULL MovableComponent");
                 } else {
                     MovableAvatarComponent mac = ((MovableAvatarComponent) c.getComponent(MovableComponent.class));
-                    mac.localMoveRequest(new CellTransform(rotation, translation), 
-                                         trigger, pressed, animationName, 
-                                         height, collision, null);
-                
+                    mac.localMoveRequest(new CellTransform(rotation, translation),
+                            trigger, pressed, animationName,
+                            height, collision, null);
+
                 }
             }
         };
-
-
-
     }
-
-
-
 
     /**
      * Returns the avatar renderer for the primary view cell, or null if none
@@ -277,7 +295,7 @@ public class AvatarImiJME extends BasicRenderer implements AvatarActionTrigger {
         WlAvatarCharacter pendingAvatar = null;
 
         logger.info("AVATAR RENDERER STATUS " + status + " DIR " + increasing);
-        
+
         // If we are increasing to the ACTIVE state, then turn everything on.
         // Add the listeners to the avatar Cell and set the avatar character
         if (status == CellStatus.ACTIVE && increasing == true) {
@@ -325,7 +343,7 @@ public class AvatarImiJME extends BasicRenderer implements AvatarActionTrigger {
                                     Thread.dumpStack();
                                     return;
                                 }
-                                
+
                                 if (delayedMove != null) {
                                     delayedMove = null;
                                     logger.fine(cell.getCellID() + ": remove delayed move for: " + transform.toString());
@@ -354,9 +372,9 @@ public class AvatarImiJME extends BasicRenderer implements AvatarActionTrigger {
             ClientContext.getInputManager().removeGlobalEventListener(avatarUIEventListener);
             ClientContext.getInputManager().removeGlobalEventListener(collisionChangeRequestListener);
             cell.getComponent(MovableComponent.class).removeServerCellMoveListener(cellMoveListener);
-            avatarUIEventListener=null;
-            cellMoveListener=null;
-            collisionChangeRequestListener=null;
+            avatarUIEventListener = null;
+            cellMoveListener = null;
+            collisionChangeRequestListener = null;
         }
 
     }
@@ -395,6 +413,9 @@ public class AvatarImiJME extends BasicRenderer implements AvatarActionTrigger {
     public void changeAvatar(final WlAvatarCharacter avatar) {
         RenderUpdater updater = new RenderUpdater() {
             public void update(Object arg0) {
+                if (avatar.getContext() == null) {
+                    avatar.instantiateContext();
+                }
                 changeAvatarInternal(avatar);
             }
         };
@@ -412,9 +433,10 @@ public class AvatarImiJME extends BasicRenderer implements AvatarActionTrigger {
      */
     private void changeAvatarInternal(WlAvatarCharacter newAvatar) {
 
-        int flg=0;
-        if (newAvatar==null)
+        int flg = 0;
+        if (newAvatar == null) {
             return;
+        }
 
         // Turn on an indication that the avatar is being loaded
         LoadingInfo.startedLoading(cell.getCellID(), newAvatar.getName());
@@ -457,9 +479,9 @@ public class AvatarImiJME extends BasicRenderer implements AvatarActionTrigger {
             // there was no previous avatar, but there was a move that
             // happened while the avatar was null. Apply the move now
             logger.fine(cell.getCellID() + " using delayed move: " + delayedMove.toString());
-            PTransform trans = new PTransform(delayedMove.getRotation(null), 
-                                              delayedMove.getTranslation(null), 
-                                              new Vector3f(1, 1, 1));
+            PTransform trans = new PTransform(delayedMove.getRotation(null),
+                    delayedMove.getTranslation(null),
+                    new Vector3f(1, 1, 1));
             avatarCharacter.getModelInst().setTransform(trans);
         }
 
@@ -504,18 +526,30 @@ public class AvatarImiJME extends BasicRenderer implements AvatarActionTrigger {
 
         // Turn off the indication that we have finished loading
         LoadingInfo.finishedLoading(cell.getCellID(), newAvatar.getName());
-        
+
         //--added for sitting problem when user logs in--//
         //check If there is an existing avatar character
         if(flg==0) {
             AvatarCell acell = (AvatarCell) cell;
             MovableAvatarComponent mac = (MovableAvatarComponent) acell.getComponent(MovableComponent.class);
             //check if avatar has trigger value of sitting
-            if(mac.getServerTrigger()==15) {
+            if (mac.getServerTrigger() == AvatarContext.TriggerNames.GoSit.ordinal()
+                    || mac.getServerTrigger() == AvatarContext.TriggerNames.GoSitLieDown.ordinal()
+                    || mac.getServerTrigger() == AvatarContext.TriggerNames.LieDownOnClick.ordinal()
+                    || mac.getServerTrigger() == AvatarContext.TriggerNames.LieDown.ordinal()) {
+                //for lying state for 'Sit on first click/ Lie down on second click' case
+                if (mac.getServerTrigger() == AvatarContext.TriggerNames.LieDownOnClick.ordinal()) {
+                    avatarCharacter.getContext().triggerPressed(AvatarContext.TriggerNames.GoSitLieDown.ordinal());
+                }
                 avatarCharacter.getContext().triggerPressed(mac.getServerTrigger());
-    }
+            }
         }
-        //--added for sitting problem when user logs in--//
+        //set username and cellId in character params
+        avatarCharacter.getCharacterParams().setName(username);
+        avatarCharacter.getCharacterParams().setId(cell.getCellID().toString());
+
+        Cell thisCell = ClientContextJME.getViewManager().getPrimaryViewCell();
+        imi.character.Character.setThisCharId(thisCell.getCellID().toString());
     }
 
     public boolean isPickable() {
@@ -555,10 +589,10 @@ public class AvatarImiJME extends BasicRenderer implements AvatarActionTrigger {
             PickBox[] pickBoxes = getPickBoxes(isMale);
 
             pickGeometry = new ImiPickGeometry(cell.getName(), cell,
-                                               AvatarImiJME.this, pickBoxes);
+                    AvatarImiJME.this, pickBoxes);
         } else if (avatarCharacter.getSimpleStaticGeometry() != null) {
             pickGeometry = new BasicPickGeometry(cell.getName(), cell, this,
-                                                 avatarCharacter.getSimpleStaticGeometry());
+                    avatarCharacter.getSimpleStaticGeometry());
         }
     }
 
@@ -598,11 +632,15 @@ public class AvatarImiJME extends BasicRenderer implements AvatarActionTrigger {
     }
 
     public void loadAndChangeAvatar(final AvatarConfigInfo avatarConfigInfo) {
-        logger.info("Loading avatar info");
-        WlAvatarCharacter avatar = loadAvatar(avatarConfigInfo);
-        logger.info("Changing avatar character");
+        final WlAvatarCharacter avatar = loadAvatar(avatarConfigInfo);
+        try {
+            if (avatar.getContext() == null) {
+                avatar.instantiateContext();
+            }
+        } catch (Exception e) {
+            avatar.instantiateContext();
+        }
         changeAvatar(avatar);
-        logger.info("Done changing avatar character");
     }
 
     /**
@@ -621,17 +659,13 @@ public class AvatarImiJME extends BasicRenderer implements AvatarActionTrigger {
                         avatarConfigInfo.getAvatarConfigURL() + " with loader " +
                         avatarConfigInfo.getLoaderFactoryClassName());
             }
-            else {
-                logger.info("Loading default avatar.");
-            }
 
             return loadAvatarInternal(avatarConfigInfo);
         } catch (Throwable t) {
-            
+
             // make sure to catch *all* errors here -- anything that gets
             // thrown can cause a stuck message in Darkstar. See 
             // OWL issue #263 for details.
-            
             // Log an error and return null
             String url = avatarConfigInfo == null ? "null" : avatarConfigInfo.getAvatarConfigURL();
             logger.log(Level.WARNING, "Failed to load avatar character for " +
@@ -645,13 +679,13 @@ public class AvatarImiJME extends BasicRenderer implements AvatarActionTrigger {
     /**
      * Load and return the avatar. To make this the current avatar changeAvatar()
      * must be called
-     * 
+     *
      * @param avatarConfigURL
      * @return
      */
     private WlAvatarCharacter loadAvatarInternal(AvatarConfigInfo avatarConfigInfo)
             throws MalformedURLException, IOException {
-        
+
         WlAvatarCharacter ret = null;
         PMatrix origin = new PMatrix();
         CellTransform transform = cell.getLocalTransform();
@@ -660,7 +694,7 @@ public class AvatarImiJME extends BasicRenderer implements AvatarActionTrigger {
 
         // Create the character
         String avatarDetail = System.getProperty("avatar.detail", "high");
-        
+
         // check if we support high-quality avatars
         if (!supportsHighQualityAvatars()) {
             logger.warning("Forcing low detail.");
@@ -725,7 +759,6 @@ public class AvatarImiJME extends BasicRenderer implements AvatarActionTrigger {
 //            String u = avatarConfigURL.getFile();
 //            username = u.substring(u.lastIndexOf('/') + 1, u.lastIndexOf('.'));
 //        }
-
         // Sets the Z-buffer state on the external kids root
         Node external = ret.getJScene().getExternalKidsRoot();
         setZBufferState(external);
@@ -733,15 +766,12 @@ public class AvatarImiJME extends BasicRenderer implements AvatarActionTrigger {
         // JSCENE HAS NOT CHILDREN, so this does nothing
 //        ret.getJScene().updateGeometricState(0, true);
 //        GraphicsUtils.printGraphBounds(ret.getJScene());
-
         //        JScene jscene = avatar.getJScene();
         //        jscene.renderToggle();      // both renderers
         //        jscene.renderToggle();      // jme renderer only
         //        jscene.setRenderPRendererMesh(true);  // Force pRenderer to be instantiated
         //        jscene.toggleRenderPRendererMesh();   // turn off mesh
         //        jscene.toggleRenderBoundingVolume();  // turn off bounds
-
-
         return ret;
     }
 
@@ -771,10 +801,8 @@ public class AvatarImiJME extends BasicRenderer implements AvatarActionTrigger {
         // is known to report false negatives on at least one graphics card.
         // Our shader test should do an adequate job determining whether a
         // graphics card supports the OpenGL 2.0 features we use.
-        
         // Update: fixed version of supportsOpenGL20 should properly detect
         // version.
-        
         return rm.supportsOpenGL20() && shaderPass && uniformsPass;
     }
 
@@ -801,9 +829,9 @@ public class AvatarImiJME extends BasicRenderer implements AvatarActionTrigger {
         Vector3f origin = new Vector3f(0f, 0.57f, 0.0f);
         float radius = 0.25f;
 
-        if (selectedForInput) {       
+        if (selectedForInput) {
             Spatial collisionGraph = new Sphere("AvatarCollision", origin, 10, 10, radius);
-            
+
             collisionGraph.setModelBound(new BoundingBox());
             collisionGraph.updateModelBound();
 
@@ -828,12 +856,12 @@ public class AvatarImiJME extends BasicRenderer implements AvatarActionTrigger {
             AvatarController ac = (AvatarController)avatar.getContext().getController();
             ac.setCollisionController(null);
             ac.removeCollisionListener(collisionListener);
-         }
+        }
     }
 
     /**
      * Sets the Z-buffer state on the given node.
-     * 
+     *
      * NOTE: This method assumes it is being called in a MT-Safe manner.
      */
     private void setZBufferState(Node node) {
@@ -902,7 +930,7 @@ public class AvatarImiJME extends BasicRenderer implements AvatarActionTrigger {
         selectedForInput = selected;
 
         if (avatarCharacter!=null) {
-             WorldManager wm = ClientContextJME.getWorldManager();
+            WorldManager wm = ClientContextJME.getWorldManager();
 
             ((WlAvatarContext) avatarCharacter.getContext()).getBehaviorManager().setEnable(false);
 
@@ -976,7 +1004,7 @@ public class AvatarImiJME extends BasicRenderer implements AvatarActionTrigger {
                 if (currentTrigger == trigger && currentPressed == pressed) {
                     return;
                 }
-                
+
                 try {
                     if (pressed) {
                         if (animationName != null) {
@@ -997,7 +1025,7 @@ public class AvatarImiJME extends BasicRenderer implements AvatarActionTrigger {
             }
         }
     }
-    
+
     public void triggerCollision(float height, boolean collision) {
         if (!selectedForInput && avatarCharacter != null) {
             ((WlAvatarController) avatarCharacter.getController()).setHeight(height);
@@ -1005,13 +1033,19 @@ public class AvatarImiJME extends BasicRenderer implements AvatarActionTrigger {
         }
     }
 
-    public void triggerGoto(final Vector3f position, final Quaternion look) {
+    /**
+     * change the avatar without changing any trigger
+     *
+     * @param position
+     * @param look
+     */
+    public void triggerGotoOnly(final Vector3f position, final Quaternion look) {
 
         if (avatarCharacter != null) {
             SceneWorker.addWorker(new WorkCommit() {
                 public void commit() {
                     PTransform xform = new PTransform(look, position,
-                                                      new Vector3f(1, 1, 1));
+                            new Vector3f(1, 1, 1));
                     avatarCharacter.getModelInst().setTransform(xform);
                 }
             });
@@ -1019,7 +1053,49 @@ public class AvatarImiJME extends BasicRenderer implements AvatarActionTrigger {
             CellTransform transform = new CellTransform();
             transform.setRotation(look);
             transform.setTranslation(position);
-        
+
+            cell.getComponent(MovableComponent.class).localMoveRequest(transform);
+        }
+    }
+
+    public void triggerGoto(final Vector3f position, final Quaternion look) {
+
+        //force avatar to Idle as it may be in sitting or cycle state
+        avatarCharacter.getContext().triggerPressed(AvatarContext.TriggerNames.Idle.ordinal());
+
+        //release trigger and change camera if 
+        GameStateChangeListenerRegisterar.registerListener(new GameStateChangeListener() {
+
+            public void enterInState(GameState gs) {
+                if (gs instanceof IdleState) {
+                    ViewManager.getViewManager().setCameraController(ViewManager.getDefaultCamera());
+                    GameStateChangeListenerRegisterar.deRegisterListener(this);
+                    avatarCharacter.getContext().triggerReleased(AvatarContext.TriggerNames.Idle.ordinal());
+                }
+            }
+
+            public void exitfromState(GameState gs) {
+
+            }
+
+            public void changeInState(GameState gs, String string, boolean bln, String string1) {
+
+            }
+        });
+
+        if (avatarCharacter != null) {
+            SceneWorker.addWorker(new WorkCommit() {
+                public void commit() {
+                    PTransform xform = new PTransform(look, position,
+                            new Vector3f(1, 1, 1));
+                    avatarCharacter.getModelInst().setTransform(xform);
+                }
+            });
+        } else {
+            CellTransform transform = new CellTransform();
+            transform.setRotation(look);
+            transform.setTranslation(position);
+
             cell.getComponent(MovableComponent.class).localMoveRequest(transform);
         }
     }
@@ -1038,7 +1114,7 @@ public class AvatarImiJME extends BasicRenderer implements AvatarActionTrigger {
     }
 
     /**
-     * Add an avatar changed listener to the list. Duplicate checking is not 
+     * Add an avatar changed listener to the list. Duplicate checking is not
      * performed. This method is thread-safe.
      * @param listener A non-null listener
      * @throws NullPointerException If listener == null
@@ -1048,7 +1124,7 @@ public class AvatarImiJME extends BasicRenderer implements AvatarActionTrigger {
             throw new NullPointerException("Null listener provided!");
         avatarChangedListeners.add(new WeakReference<AvatarChangedListener>(listener));
     }
-    
+
     /**
      * Remove an avatar changed listener from the list. This method will remove
      * erroneously added duplicates if any exist.
@@ -1068,6 +1144,14 @@ public class AvatarImiJME extends BasicRenderer implements AvatarActionTrigger {
     /**
      * This interface is used to receive call-backs whenever the underlying avatar
      * is changed
+     */
+    public GameContext initializeContext(WlAvatarCharacter avatar) {
+        return avatar.instantiateContext();
+    }
+
+    /**
+     * This interface is used to receive call-backs whenever the underlying
+     * avatar is changed
      */
     public static interface AvatarChangedListener {
         /**
@@ -1141,54 +1225,54 @@ public class AvatarImiJME extends BasicRenderer implements AvatarActionTrigger {
         }
 
     }
-    
+
     class AvatarUIEventListener extends EventClassListener {
-            private Class[] consumeClasses = new Class[]{
-                AvatarRendererChangeRequestEvent.class,
-                AvatarNameEvent.class
-            };
+        private Class[] consumeClasses = new Class[]{
+            AvatarRendererChangeRequestEvent.class,
+            AvatarNameEvent.class
+        };
 
-            @Override
-            public Class[] eventClassesToConsume() {
-                return consumeClasses;
-            }
+        @Override
+        public Class[] eventClassesToConsume() {
+            return consumeClasses;
+        }
 
-            @Override
-            public void commitEvent(Event event) {
-                if (event instanceof AvatarNameEvent) {
-                    AvatarNameEvent e = (AvatarNameEvent) event;
+        @Override
+        public void commitEvent(Event event) {
+            if (event instanceof AvatarNameEvent) {
+                AvatarNameEvent e = (AvatarNameEvent) event;
 
-                    // Fetch the name tag node, there should only be one of
-                    // these in the system and set the name.
-                    NameTagNode nameTagNode = getNameTagNode();
-                    if (nameTagNode!=null && e.getUsername().equals(username) == true) {
-                        nameTagNode.setNameTag(e.getEventType(), username,
-                                           e.getUsernameAlias());
-                    }
-                    
-                    //Issue#172 & 286 : Avatar name out of sync after Mute.
-                    //update server state for mute & unmute events
-                    //send message to server that mute/unmute event is fired
-                    String currUsername = LoginManager.getPrimary().getUsername();
-                    if(e.getUsername().equals(currUsername)) {
-                        if(e.getUsername().equals(username)) {
-                            if(e.getEventType().equals(AvatarNameEvent.EventType.MUTE) 
-                                    || e.getEventType().equals(AvatarNameEvent.EventType.UNMUTE)) {
-                                NameTagMessage msg = new NameTagMessage();
-                                msg.setUsername(currUsername);
-                                msg.setIsMute(e.getEventType().equals(AvatarNameEvent.EventType.MUTE)?true:false);
-                                cell.sendCellMessage(msg);
-                            }
+                // Fetch the name tag node, there should only be one of
+                // these in the system and set the name.
+                NameTagNode nameTagNode = getNameTagNode();
+                if (nameTagNode != null && e.getUsername().equals(username) == true) {
+                    nameTagNode.setNameTag(e.getEventType(), username,
+                            e.getUsernameAlias());
+                }
+
+                //Issue#172 & 286 : Avatar name out of sync after Mute.
+                //update server state for mute & unmute events
+                //send message to server that mute/unmute event is fired
+                String currUsername = LoginManager.getPrimary().getUsername();
+                if (e.getUsername().equals(currUsername)) {
+                    if (e.getUsername().equals(username)) {
+                        if (e.getEventType().equals(AvatarNameEvent.EventType.MUTE)
+                                || e.getEventType().equals(AvatarNameEvent.EventType.UNMUTE)) {
+                            NameTagMessage msg = new NameTagMessage();
+                            msg.setUsername(currUsername);
+                            msg.setIsMute(e.getEventType().equals(AvatarNameEvent.EventType.MUTE) ? true : false);
+                            cell.sendCellMessage(msg);
                         }
                     }
-                    
-                } else if (event instanceof AvatarRendererChangeRequestEvent) {
-                    handleAvatarRendererChangeRequest((AvatarRendererChangeRequestEvent)event);
                 }
-            }
 
-            @Override
-            public void computeEvent(Event evtIn) {
+            } else if (event instanceof AvatarRendererChangeRequestEvent) {
+                    handleAvatarRendererChangeRequest((AvatarRendererChangeRequestEvent)event);
             }
+        }
+
+        @Override
+        public void computeEvent(Event evtIn) {
+        }
     }
 }

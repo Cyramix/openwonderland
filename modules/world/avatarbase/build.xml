@@ -15,7 +15,7 @@
         <path location="${current.dir}/lib/avatars.jar"/>
         <path location="${modules.dir}/foundation/hud/build/client/hud-client.jar"/>
     </pathconvert>
-       
+    
     <target name="build" depends="-module-init, -module-compile-common,
                                                 -module-compile-server,
                                                 -module-compile-client,
@@ -47,8 +47,8 @@
     <target name="dist" depends="build">
         <mkdir dir="${module.dist.dir}"/>
         
-        <module name="avatarbase" majorVersion="0" minorVersion="5" miniVersion="5" jarfile="${module.dist.dir}/avatarbase.jar"
-                moduleDescription="Avatar API and library" builddir="${build.dir}">
+        <module name="avatarbase" majorVersion="1" minorVersion="2" miniVersion="0" jarfile="${module.dist.dir}/avatarbase.jar"
+                moduleDescription="Avatar API and library - New Gestures" builddir="${build.dir}">
 
             <requires name="content-repository" version="0" minorVersion="5"/>
 
